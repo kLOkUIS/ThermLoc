@@ -1,0 +1,102 @@
+#include <Arduino.h>
+#include <SPI.h>
+#include <LoRa.h>
+#include <Adafruit_NeoPixel.h>
+
+// =================== Pin Definitions ===================
+#define LORA_SS   5   // NSS
+#define LORA_RST  7   // Reset
+#define LORA_DIO0 6   // DIO0
+#define LORA_DIO1 8   // DIO1
+#define LORA_SCK  2   // SCK
+#define LORA_MISO 4   // MISO
+#define LORA_MOSI 3   // MOSI
+
+#define LED_PIN   16  // NeoPixel onboard LED
+#define LED_COUNT 1
+
+// =================== NeoPixel Setup ===================
+Adafruit_NeoPixel pixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// =================== LoRa Parameters ===================
+#define LORA_FREQ 868E6      // Adjust for your region
+#define NODE_ID   1          // Change per device
+
+unsigned long lastSendTime = 0;
+int packetCounter = 0;
+
+// =================== Setup ===================
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+  Serial.println("\n=== LoRa Minimal Test Starting ===");
+
+  // LED init
+  pixel.begin();
+  pixel.setBrightness(50);
+  pixel.fill(pixel.Color(255, 0, 0)); // Red while initializing
+  pixel.show();
+
+  // LoRa pin setup
+  SPI.setSCK(LORA_SCK);
+  SPI.setMISO(LORA_MISO);
+  SPI.setMOSI(LORA_MOSI);
+
+  LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+
+  if (!LoRa.begin(LORA_FREQ)) {
+    Serial.println("❌ LoRa init failed!");
+    while (true) {
+      pixel.fill(pixel.Color(255, 0, 0));
+      pixel.show();
+      delay(500);
+      pixel.clear();
+      pixel.show();
+      delay(500);
+    }
+  }
+
+  Serial.println("✅ LoRa init OK");
+  pixel.fill(pixel.Color(0, 255, 0)); // Green if OK
+  pixel.show();
+  delay(1000);
+}
+
+// =================== Loop ===================
+void loop() {
+  // --- Send a packet every 2 seconds ---
+  if (millis() - lastSendTime > 2000) {
+    String msg = "Hello from Node " + String(NODE_ID) + " #" + String(packetCounter++);
+    LoRa.beginPacket();
+    LoRa.print(msg);
+    LoRa.endPacket();
+    Serial.println("📤 Sent: " + msg);
+
+    pixel.fill(pixel.Color(0, 0, 255)); // Blue when sending
+    pixel.show();
+    delay(100);
+    pixel.clear();
+    pixel.show();
+
+    lastSendTime = millis();
+  }
+
+  // --- Check for received packets ---
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    String incoming = "";
+    while (LoRa.available()) {
+      incoming += (char)LoRa.read();
+    }
+    Serial.print("📥 Received: ");
+    Serial.print(incoming);
+    Serial.print(" | RSSI=");
+    Serial.println(LoRa.packetRssi());
+
+    pixel.fill(pixel.Color(255, 255, 0)); // Yellow on receive
+    pixel.show();
+    delay(100);
+    pixel.clear();
+    pixel.show();
+  }
+}
